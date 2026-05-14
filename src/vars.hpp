@@ -16,8 +16,6 @@ volatile bool speakerState = true;
 Ticker speakerTimer;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
-uint8_t broadcastAddress[6] = {0x14, 0x33, 0x5C, 0x04, 0x20, 0x70};
-
 // Accelerometer
 #define CRASH_THRESHOLD (3 * 9.8)
 
@@ -69,4 +67,13 @@ void setupBLE()
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SERVICE_UUID);
     pAdvertising->start();
+}
+
+// Relay
+bool ignitionDisabled = false;
+
+void setRelay(bool state) {
+  ignitionDisabled = state;
+  digitalWrite(RELAY, state ? HIGH : LOW);
+  Serial.printf("Relay %s\n", state ? "ON" : "OFF");
 }

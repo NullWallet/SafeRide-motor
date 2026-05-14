@@ -5,7 +5,9 @@ typedef unsigned char uint8_t;
 
 typedef struct data
 {
-};
+    bool helmetOn;
+    float bacLevel;
+} data;
 
 data helmetData;
 
