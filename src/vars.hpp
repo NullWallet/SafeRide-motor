@@ -6,9 +6,8 @@
 #include <BLE2902.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
-#include <BLEUtils.h>
 
-#define RELAY 27
+#define RELAY 18
 #define SPEAKER 26
 
 // --- Speaker
@@ -35,45 +34,80 @@ bool deviceConnected = false;
 
 class ServerCallbacks : public BLEServerCallbacks
 {
-    void onConnect(BLEServer *s)
-    {
-        deviceConnected = true;
-    }
-    void onDisconnect(BLEServer *s)
-    {
-        deviceConnected = false;
-        // Restart advertising so the app can reconnect
-        BLEDevice::getAdvertising()->start();
-        Serial.println("Client disconnected — advertising restarted");
-    }
+  void onConnect(BLEServer *s)
+  {
+    deviceConnected = true;
+  }
+  void onDisconnect(BLEServer *s)
+  {
+    deviceConnected = false;
+    // Restart advertising so the app can reconnect
+    BLEDevice::getAdvertising()->start();
+    Serial.println("Client disconnected — advertising restarted");
+  }
 };
 
 void setupBLE()
 {
-    BLEDevice::init("ESP-MOTOR");
-    BLEServer *pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new ServerCallbacks());
+  BLEDevice::init("ESP-MOTOR");
+  BLEServer *pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new ServerCallbacks());
 
-    BLEService *pService = pServer->createService(SERVICE_UUID);
-    pCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID,
-        BLECharacteristic::PROPERTY_READ |
-            BLECharacteristic::PROPERTY_NOTIFY |
-            BLECharacteristic::PROPERTY_WRITE);
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+  pCharacteristic = pService->createCharacteristic(
+      CHARACTERISTIC_UUID,
+      BLECharacteristic::PROPERTY_READ |
+          BLECharacteristic::PROPERTY_NOTIFY |
+          BLECharacteristic::PROPERTY_WRITE);
 
-    pCharacteristic->addDescriptor(new BLE2902());
-    pService->start();
+  pCharacteristic->addDescriptor(new BLE2902());
+  pService->start();
 
-    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-    pAdvertising->addServiceUUID(SERVICE_UUID);
-    pAdvertising->start();
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->start();
 }
 
 // Relay
 bool ignitionDisabled = false;
 
-void setRelay(bool state) {
+void setRelay(bool state)
+{
   ignitionDisabled = state;
-  digitalWrite(RELAY, state ? HIGH : LOW);
-  Serial.printf("Relay %s\n", state ? "ON" : "OFF");
+  digitalWrite(RELAY, state ? LOW : HIGH); // LOW to disable, HIGH to enable
+  Serial.printf("Relay %s\n", state ? "ENGAGED (Ignition Enabled)" : "DISENGAGED (Ignition Disabled)");
+}
+
+void alert()
+{
+  if (!crashDetected)
+    return;
+  digitalWrite(SPEAKER, speakerState ? HIGH : LOW);
+  speakerState = !speakerState;
+
+  setRelay(speakerState); // Disable ignition when alerting
+}
+
+void resetCrashFlag()
+{
+  crashDetected = false;
+
+  portENTER_CRITICAL(&mux);
+  speakerState = false;
+  digitalWrite(SPEAKER, LOW); // ← force pin off
+  digitalWrite(RELAY, LOW); // ← re-enable ignition
+  portEXIT_CRITICAL(&mux);
+
+  Serial.println("Crash flag reset. Speaker silenced.");
+}
+
+void triggerCrashAlert()
+{
+  crashDetected = true;
+  if (deviceConnected)
+  {
+    pCharacteristic->setValue("CRASH");
+    pCharacteristic->notify();
+    delay(200); // let BLE stack flush before anything else runs
+  }
 }

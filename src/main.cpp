@@ -5,35 +5,6 @@
 #include <comms.hpp>
 #include <vars.hpp>
 
-
-void alert()
-{
-  if (!crashDetected)
-    return;
-  digitalWrite(SPEAKER, speakerState ? HIGH : LOW);
-  speakerState = !speakerState;
-}
-
-void resetCrashFlag() {
-  crashDetected = false;
-
-  portENTER_CRITICAL(&mux);
-  speakerState = false;
-  digitalWrite(SPEAKER, LOW);   // ← force pin off
-  portEXIT_CRITICAL(&mux);
-
-  Serial.println("Crash flag reset. Speaker silenced.");
-}
-
-void triggerCrashAlert() {
-  crashDetected = true;
-  if (deviceConnected) {
-    pCharacteristic->setValue("CRASH");
-    pCharacteristic->notify();
-    delay(200); // let BLE stack flush before anything else runs
-  }
-}
-
 void setup()
 {
   Serial.begin(115200);
@@ -61,6 +32,7 @@ void setup()
     Serial.println("Error initializing ESP-NOW");
     return;
   }
+  Serial.println("initialized ESP-NOW");
 
   esp_now_register_recv_cb(OnDataRecv);
 
@@ -95,9 +67,5 @@ void loop()
     }
   }
   delay(10);
-#pragma endregion
-
-#pragma region esp now
-// TODO esp now communication
 #pragma endregion
 }
