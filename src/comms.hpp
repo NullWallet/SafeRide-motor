@@ -1,5 +1,5 @@
 #pragma once
-#include "vars.hpp"
+#include <cstring>
 
 typedef unsigned char uint8_t;
 
@@ -13,42 +13,55 @@ struct DriverData
 {
     HelmetTypes helmetType;
     bool helmetOn;
-    float bacLevel;
+    float bacLevel; // only meaningful for Driver; Passenger sends 0.0f
 };
 
-struct PassengerData
+// Separate state for each helmet
+struct HelmetState
 {
-    HelmetTypes helmetType;
-    bool helmetOn;
+    bool received = false;
+    bool helmetOn = false;
+    float bacLevel = 0.0f;
 };
 
-DriverData driverData;
-PassengerData passengerData;
+HelmetState driverState;
+HelmetState passengerState;
 
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
 {
-    if (len < 1)
-        return; // prevent out of bounds read
+    // Print the sender's MAC address and payload size
+    Serial.printf("\n--- Incoming ESP-NOW Data ---\n");
+    Serial.printf("MAC: %02X:%02X:%02X:%02X:%02X:%02X | Bytes: %d\n",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], len);
 
-    uint8_t helmetType = incomingData[0] & 0x01; // Extract helmet type (bit 0)
-    if (helmetType == HelmetTypes::Driver)
+    if (len != sizeof(DriverData))
     {
-        memcpy(&driverData, incomingData, sizeof(driverData));
-        Serial.print("Received Driver Data - Helmet On: ");
-        Serial.println((bool)driverData.helmetOn);
+        Serial.println("WARNING: Received packet size does not match DriverData struct!");
     }
-    else if (helmetType == HelmetTypes::Passenger)
+
+    DriverData incoming;
+    memcpy(&incoming, incomingData, sizeof(incoming));
+
+    if (incoming.helmetType == HelmetTypes::Driver)
     {
-        memcpy(&passengerData, incomingData, sizeof(passengerData));
-        Serial.printf("Received Passenger Data - Helmet On: %s", (passengerData.helmetOn ? "True" : "False"));
-        if (passengerData.helmetOn)
-        {
-            triggerCrashAlert();
-            resetCrashTimer.once_ms(3000, resetCrashFlag);
-        }
+        Serial.printf("Type: DRIVER | Helmet On: %s | BAC: %.3f\n",
+                      incoming.helmetOn ? "True" : "False",
+                      incoming.bacLevel);
+
+        driverState.received = true;
+        driverState.helmetOn = incoming.helmetOn;
+        driverState.bacLevel = incoming.bacLevel;
+    }
+    else if (incoming.helmetType == HelmetTypes::Passenger)
+    {
+        Serial.printf("Type: PASSENGER | Helmet On: %s\n",
+                      incoming.helmetOn ? "True" : "False");
+
+        passengerState.received = true;
+        passengerState.helmetOn = incoming.helmetOn;
     }
     else
     {
-        return; // Invalid helmet type
+        Serial.println("WARNING: Unknown HelmetType received!");
     }
 }

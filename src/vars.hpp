@@ -74,40 +74,30 @@ bool ignitionDisabled = false;
 void setRelay(bool state)
 {
   ignitionDisabled = state;
-  digitalWrite(RELAY, state ? LOW : HIGH); // LOW to disable, HIGH to enable
-  Serial.printf("Relay %s\n", state ? "ENGAGED (Ignition Enabled)" : "DISENGAGED (Ignition Disabled)");
+  digitalWrite(RELAY, state ? HIGH : LOW); // LOW to disable, HIGH to enable
+  Serial.printf("Relay %s\n", !state ? "ENGAGED (Ignition Enabled)" : "DISENGAGED (Ignition Disabled)");
 }
 
-void alert()
-{
-  if (!crashDetected)
-    return;
-  digitalWrite(SPEAKER, speakerState ? HIGH : LOW);
-  speakerState = !speakerState;
-
-  setRelay(speakerState); // Disable ignition when alerting
+void alert() {
+    if (!crashDetected) return;
+    digitalWrite(SPEAKER, speakerState ? HIGH : LOW);
+    speakerState = !speakerState;
 }
 
-void resetCrashFlag()
-{
-  crashDetected = false;
-
-  portENTER_CRITICAL(&mux);
-  speakerState = false;
-  digitalWrite(SPEAKER, LOW); // ← force pin off
-  digitalWrite(RELAY, LOW); // ← re-enable ignition
-  portEXIT_CRITICAL(&mux);
-
-  Serial.println("Crash flag reset. Speaker silenced.");
+void resetCrashFlag() {
+    crashDetected = false;
+    portENTER_CRITICAL(&mux);
+    speakerState = false;
+    digitalWrite(SPEAKER, LOW);
+    portEXIT_CRITICAL(&mux);
+    Serial.println("Crash flag reset. Speaker silenced.");
 }
 
-void triggerCrashAlert()
-{
-  crashDetected = true;
-  if (deviceConnected)
-  {
-    pCharacteristic->setValue("CRASH");
-    pCharacteristic->notify();
-    delay(200); // let BLE stack flush before anything else runs
-  }
+void triggerCrashAlert() {
+    crashDetected = true;
+    if (deviceConnected) {
+        pCharacteristic->setValue("CRASH");
+        pCharacteristic->notify();
+        delay(200);
+    }
 }
