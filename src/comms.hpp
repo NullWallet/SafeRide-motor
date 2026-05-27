@@ -4,42 +4,31 @@
 
 typedef unsigned char uint8_t;
 
-enum HelmetTypes
-{
-    Driver,
-    Passenger
-};
+enum HelmetTypes { Driver, Passenger };
 
-// MUST match SafeRide-Driver/src/var.hpp exactly (byte-for-byte) for ESP-NOW.
-struct DriverData
-{
+struct DriverData {
     HelmetTypes helmetType;
     bool helmetOn;
     bool isSober;
 };
 
-// Per-helmet state tracked on the motor side.
-struct HelmetState
-{
+struct HelmetState {
     bool received = false;
     bool helmetOn = false;
     bool isSober = false;
-    bool everOn = false; // sticky: true once helmetOn was seen as true at least once
+    bool everOn = false;
     unsigned long lastUpdateMs = 0;
 };
 
 HelmetState driverState;
 HelmetState passengerState;
 
-// Add a new struct for BAC data sent from helmet → motor
-struct BacData
-{
-    float bac;
-};
+// Dedicated test result packet from driver helmet → motor
+struct TestResultData { bool isSober; };
 
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
 {
-    // ── Existing DriverData handler ───────────────────────────────────────
+    // ── DriverData heartbeat ──────────────────────────────────────────────
     if (len == sizeof(DriverData))
     {
         DriverData incoming;
@@ -49,13 +38,13 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
         {
             driverState.received = true;
             driverState.helmetOn = incoming.helmetOn;
-            driverState.isSober = incoming.isSober;
+            driverState.isSober  = incoming.isSober;
             driverState.lastUpdateMs = millis();
             if (incoming.helmetOn)
                 driverState.everOn = true;
 
             notifyBLE(incoming.helmetOn ? "HELMET:DRIVER:1" : "HELMET:DRIVER:0");
-            notifyBLE(incoming.isSober ? "SOBER:1" : "SOBER:0");
+            notifyBLE(incoming.isSober  ? "SOBER:1"         : "SOBER:0");
         }
         else if (incoming.helmetType == HelmetTypes::Passenger)
         {
@@ -70,17 +59,16 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
         return;
     }
 
-    // ── BAC result from driver helmet ─────────────────────────────────────
-    if (len == sizeof(BacData))
+    // ── TestResultData — sent only when a test finishes ───────────────────
+    if (len == sizeof(TestResultData))
     {
-        BacData bac;
-        memcpy(&bac, incomingData, sizeof(bac));
-        Serial.printf("[ESP-NOW] BAC received: %.4f\n", bac.bac);
+        TestResultData result;
+        memcpy(&result, incomingData, sizeof(result));
+        Serial.printf("[ESP-NOW] Test result received: %s\n",
+                      result.isSober ? "SOBER" : "DRUNK");
 
-        // Forward to app as "BAC:0.0450"
-        char msg[32];
-        snprintf(msg, sizeof(msg), "BAC:%.4f", bac.bac);
-        notifyBLE(msg);
+        // Notify app with a dedicated message (distinct from heartbeat SOBER:)
+        notifyBLE(result.isSober ? "TEST_RESULT:SOBER" : "TEST_RESULT:DRUNK");
         return;
     }
 

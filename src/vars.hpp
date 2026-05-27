@@ -28,7 +28,7 @@ const unsigned long CRASH_COOLDOWN_MS = 5000;
 Adafruit_MPU6050 mpu;
 
 // MAC address of your driver helmet ESP32 — replace with actual
-uint8_t driverHelmetMac[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+uint8_t driverHelmetMac[] = {0x14, 0x33, 0x5C, 0x03, 0xF1, 0x60};
 
 bool espNowPeerAdded = false;
 

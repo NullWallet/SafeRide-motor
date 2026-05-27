@@ -171,6 +171,10 @@ void setup()
         Serial.println("Error initializing ESP-NOW");
         return;
     }
+    esp_now_register_send_cb([](const uint8_t *mac, esp_now_send_status_t status)
+                             { Serial.printf("[ESP-NOW TX] %02X:%02X:%02X:%02X:%02X:%02X -> %s\n",
+                                             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+                                             status == ESP_NOW_SEND_SUCCESS ? "OK" : "FAIL"); });
     esp_now_register_recv_cb(OnDataRecv);
 
     setupBLE();
