@@ -1,5 +1,6 @@
 #pragma once
 #include <cstring>
+#include <vars.hpp>
 
 typedef unsigned char uint8_t;
 
@@ -9,59 +10,79 @@ enum HelmetTypes
     Passenger
 };
 
+// MUST match SafeRide-Driver/src/var.hpp exactly (byte-for-byte) for ESP-NOW.
 struct DriverData
 {
     HelmetTypes helmetType;
     bool helmetOn;
-    float bacLevel; // only meaningful for Driver; Passenger sends 0.0f
+    bool isSober;
 };
 
-// Separate state for each helmet
+// Per-helmet state tracked on the motor side.
 struct HelmetState
 {
     bool received = false;
     bool helmetOn = false;
-    float bacLevel = 0.0f;
+    bool isSober = false;
+    bool everOn = false; // sticky: true once helmetOn was seen as true at least once
+    unsigned long lastUpdateMs = 0;
 };
 
 HelmetState driverState;
 HelmetState passengerState;
 
+// Add a new struct for BAC data sent from helmet → motor
+struct BacData
+{
+    float bac;
+};
+
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
 {
-    // Print the sender's MAC address and payload size
-    Serial.printf("\n--- Incoming ESP-NOW Data ---\n");
-    Serial.printf("MAC: %02X:%02X:%02X:%02X:%02X:%02X | Bytes: %d\n",
-                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], len);
-
-    if (len != sizeof(DriverData))
+    // ── Existing DriverData handler ───────────────────────────────────────
+    if (len == sizeof(DriverData))
     {
-        Serial.println("WARNING: Received packet size does not match DriverData struct!");
+        DriverData incoming;
+        memcpy(&incoming, incomingData, sizeof(incoming));
+
+        if (incoming.helmetType == HelmetTypes::Driver)
+        {
+            driverState.received = true;
+            driverState.helmetOn = incoming.helmetOn;
+            driverState.isSober = incoming.isSober;
+            driverState.lastUpdateMs = millis();
+            if (incoming.helmetOn)
+                driverState.everOn = true;
+
+            notifyBLE(incoming.helmetOn ? "HELMET:DRIVER:1" : "HELMET:DRIVER:0");
+            notifyBLE(incoming.isSober ? "SOBER:1" : "SOBER:0");
+        }
+        else if (incoming.helmetType == HelmetTypes::Passenger)
+        {
+            passengerState.received = true;
+            passengerState.helmetOn = incoming.helmetOn;
+            passengerState.lastUpdateMs = millis();
+            if (incoming.helmetOn)
+                passengerState.everOn = true;
+
+            notifyBLE(incoming.helmetOn ? "HELMET:PASSENGER:1" : "HELMET:PASSENGER:0");
+        }
+        return;
     }
 
-    DriverData incoming;
-    memcpy(&incoming, incomingData, sizeof(incoming));
-
-    if (incoming.helmetType == HelmetTypes::Driver)
+    // ── BAC result from driver helmet ─────────────────────────────────────
+    if (len == sizeof(BacData))
     {
-        Serial.printf("Type: DRIVER | Helmet On: %s | BAC: %.3f\n",
-                      incoming.helmetOn ? "True" : "False",
-                      incoming.bacLevel);
+        BacData bac;
+        memcpy(&bac, incomingData, sizeof(bac));
+        Serial.printf("[ESP-NOW] BAC received: %.4f\n", bac.bac);
 
-        driverState.received = true;
-        driverState.helmetOn = incoming.helmetOn;
-        driverState.bacLevel = incoming.bacLevel;
+        // Forward to app as "BAC:0.0450"
+        char msg[32];
+        snprintf(msg, sizeof(msg), "BAC:%.4f", bac.bac);
+        notifyBLE(msg);
+        return;
     }
-    else if (incoming.helmetType == HelmetTypes::Passenger)
-    {
-        Serial.printf("Type: PASSENGER | Helmet On: %s\n",
-                      incoming.helmetOn ? "True" : "False");
 
-        passengerState.received = true;
-        passengerState.helmetOn = incoming.helmetOn;
-    }
-    else
-    {
-        Serial.println("WARNING: Unknown HelmetType received!");
-    }
+    Serial.printf("WARNING: Unknown packet size %d\n", len);
 }
