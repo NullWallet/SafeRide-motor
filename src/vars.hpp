@@ -16,7 +16,7 @@ Ticker speakerTimer;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 // Accelerometer
-#define CRASH_THRESHOLD (3 * 9.8)
+#define CRASH_THRESHOLD (2 * 9.81)
 
 Ticker resetCrashTimer;
 volatile bool crashDetected = false;
@@ -78,17 +78,17 @@ void setRelay(bool state)
   Serial.printf("Relay %s\n", !state ? "ENGAGED (Ignition Enabled)" : "DISENGAGED (Ignition Disabled)");
 }
 
-void alert() {
-    if (!crashDetected) return;
-    digitalWrite(SPEAKER, speakerState ? HIGH : LOW);
-    speakerState = !speakerState;
-}
+//TODO: Remove
+// void alert() {
+//     if (!crashDetected) return;
+//     digitalWrite(SPEAKER, speakerState ? HIGH : LOW);
+//     speakerState = !speakerState;
+// }
 
 void resetCrashFlag() {
     crashDetected = false;
     portENTER_CRITICAL(&mux);
     speakerState = false;
-    digitalWrite(SPEAKER, LOW);
     portEXIT_CRITICAL(&mux);
     Serial.println("Crash flag reset. Speaker silenced.");
 }
@@ -101,3 +101,15 @@ void triggerCrashAlert() {
         delay(200);
     }
 }
+
+// --- Helmet Removal Countdown ---
+bool           countdownActive      = false;
+unsigned long  countdownStartMs     = 0;
+int            lastBeepSecond       = -1;   // which second was last beeped
+bool           countdownBeepOn      = false;
+unsigned long  countdownBeepOnMs    = 0;
+bool           ignitionCutByCountdown = false;
+
+const unsigned long COUNTDOWN_TOTAL_MS  = 30000UL; // 30 s total
+const unsigned long COUNTDOWN_CONT_MS   = 25000UL; // continuous beep starts at 25 s
+const unsigned long BEEP_PULSE_MS       = 150UL;   // short beep duration (ms)
