@@ -153,6 +153,7 @@ void setup()
 
     // Default: ignition OFF until we hear from helmets
     setRelay(true);
+    lockIgnition("initial state — waiting for helmet data");
 
     // speakerTimer.attach_ms(500, alert); // crash-alert ticker
 
